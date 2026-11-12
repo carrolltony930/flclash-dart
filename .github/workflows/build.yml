@@ -55,12 +55,19 @@ jobs:
         working-directory: app
         run: flutter pub get
 
+      - name: Create iOS platform scaffold
+        working-directory: app
+        run: |
+          flutter create --platforms=ios --org cc.flclash --project-name fl_clash --no-pub . 2>&1 | tail -15
+          ls ios | head -20
+          test -f ios/Runner.xcodeproj/project.pbxproj && echo "pbxproj OK"
+
       - name: Build App.framework
         working-directory: app
         run: |
-          flutter build ios-framework --release --no-codesign \
+          flutter build ios-framework --release \
             --dart-define=APP_ENV=${{ inputs.app_env }} \
-            --output=build/fw
+            --output=build/fw 2>&1 | tail -45
 
       - name: Inspect output
         working-directory: app
