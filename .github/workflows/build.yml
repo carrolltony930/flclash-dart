@@ -34,18 +34,20 @@ jobs:
           echo "ENGINE=$(cat $FLUTTER_ROOT/bin/internal/engine.version)"
           echo "expect=89c39edfdfae2949f6806e4a315c0c08522238b7"
 
-      - name: Disable Go core hook
+      - name: Disable native asset hooks
         working-directory: app
         run: |
           python3 - <<'EOF'
           import re
           p = 'pubspec.yaml'
           s = open(p).read()
-          s2 = re.sub(r'(user_defines:\s*\n\s*setup:\s*\n\s*build_assets:\s*)true', r'\1false', s)
+          s2 = re.sub(r'(build_assets:\s*)true', r'\1false', s)
           open(p, 'w').write(s2)
           print('changed' if s2 != s else 'UNCHANGED')
           EOF
           sed -n '8,20p' pubspec.yaml
+          echo "--- lib/main.dart head ---"
+          head -8 lib/main.dart
 
       - name: Add Rust iOS target
         run: |
