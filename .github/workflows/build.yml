@@ -28,6 +28,18 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Validate source tree
+        working-directory: app
+        run: |
+          git rev-parse HEAD
+          git log -1 --format='%ci %s'
+          echo "--- dashboard.dart refs ---"
+          grep -n "widget_registry\|core_status_button\|widgets/widgets" lib/views/dashboard/dashboard.dart || echo "NO MATCH"
+          echo "--- widgets dir ---"
+          ls lib/views/dashboard/widgets | tr '\n' ' '; echo
+          echo "--- ip_quality exists? ---"
+          ls -la lib/common/ip_quality.dart 2>/dev/null || echo MISSING
+
       - name: Verify engine hash
         run: |
           flutter --version
