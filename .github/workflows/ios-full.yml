@@ -1,0 +1,81 @@
+name: ios-unsigned-full
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout FlClash (老包正主源码)
+        uses: actions/checkout@v4
+        with:
+          repository: WWW-MuYu-Love/FlClash
+          ref: main
+          submodules: recursive
+          path: app
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: app/core/go.sum
+
+      - name: Setup Flutter 3.47.9
+        uses: subosito/flutter-action@v2
+        with:
+          channel: master
+          flutter-version: '3.47.9'
+          cache: true
+
+      - name: Setup Rust
+        run: |
+          if ! command -v cargo >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          fi
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          rustup target add aarch64-apple-ios
+          cargo --version
+
+      - name: Toolchain info
+        run: |
+          flutter --version
+          echo "ENGINE=$(cat $FLUTTER_ROOT/bin/internal/engine.version)"
+          echo "expect=89c39edfdfae2949f6806e4a315c0c08522238b7"
+          xcodebuild -version
+          go version
+
+      - name: Pub get
+        working-directory: app
+        run: flutter pub get
+
+      - name: Fetch CA certificates
+        working-directory: app
+        shell: bash
+        env:
+          CA_BUNDLE: cacert-2026-09-25.pem
+          CA_BUNDLE_SHA256: a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505
+        run: |
+          bundle=core/Clash.Meta/component/ca/ca-certificates.crt
+          curl -fsSL --retry 3 -o "$bundle" "https://curl.se/ca/$CA_BUNDLE"
+          echo "$CA_BUNDLE_SHA256  $bundle" | shasum -a 256 -c -
+
+      - name: Build unsigned IPA (APP_ENV=stable)
+        working-directory: app
+        run: |
+          set -o pipefail
+          dart setup.dart ios --no-codesign -v --env stable --ios-bundle-id love.muyu.flclash 2>&1 | tail -150
+
+      - name: Inspect dist
+        working-directory: app
+        run: |
+          ls -la dist || true
+          find dist -maxdepth 2 -type f | head -20
+          for f in dist/*.ipa; do echo "$f $(stat -f%z "$f")"; done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipa-stable
+          path: app/dist/**
+          if-no-files-found: error
