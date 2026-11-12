@@ -65,9 +65,10 @@ jobs:
       - name: Build App.framework
         working-directory: app
         run: |
-          flutter build ios-framework --release \
+          set -o pipefail
+          flutter build ios-framework --release --no-codesign \
             --dart-define=APP_ENV=${{ inputs.app_env }} \
-            --output=build/fw 2>&1 | tail -45
+            --output=build/fw 2>&1 | tail -60
 
       - name: Inspect output
         working-directory: app
