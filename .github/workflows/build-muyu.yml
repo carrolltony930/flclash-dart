@@ -1,0 +1,100 @@
+name: build-app-framework-muyu
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_env:
+        description: "APP_ENV value"
+        required: false
+        default: "stable"
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 150
+    steps:
+      - name: Checkout WWW-MuYu-Love/FlClash (老包正主源码)
+        uses: actions/checkout@v4
+        with:
+          repository: WWW-MuYu-Love/FlClash
+          ref: main
+          submodules: recursive
+          path: app
+
+      - name: Setup Flutter 3.47.9
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.9"
+          channel: stable
+          cache: true
+
+      - name: Validate source tree
+        working-directory: app
+        run: |
+          set -e
+          git rev-parse HEAD
+          git log -3 --format='%ci %s'
+          echo "--- pubspec version ---"
+          head -6 pubspec.yaml
+          echo "--- private files ---"
+          ls -la lib/views/dashboard/widgets/zashboard.dart
+          ls -la lib/providers/service_status.dart
+          ls -la lib/models/ip_quality.dart
+          echo "--- ios shell ---"
+          ls ios
+          grep -n "love.muyu.flclash" ios/Runner.xcodeproj/project.pbxproj | head -5
+          echo "--- banner source ---"
+          sed -n '180,210p' lib/manager/app_manager.dart
+          grep -n "isPre" lib/state.dart
+
+      - name: Verify engine hash
+        run: |
+          flutter --version
+          echo "ENGINE=$(cat $FLUTTER_ROOT/bin/internal/engine.version)"
+          echo "expect=89c39edfdfae2949f6806e4a315c0c08522238b7"
+
+      - name: Disable native asset hooks
+        working-directory: app
+        run: |
+          python3 - <<'EOF'
+          import re
+          p = 'pubspec.yaml'
+          s = open(p).read()
+          s2 = re.sub(r'(build_assets:\s*)true', r'\1false', s)
+          open(p, 'w').write(s2)
+          print('changed' if s2 != s else 'UNCHANGED')
+          EOF
+          sed -n '8,20p' pubspec.yaml
+
+      - name: Pub get
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build App.framework
+        working-directory: app
+        run: |
+          set -o pipefail
+          flutter build ios-framework --release --no-codesign \
+            --dart-define=APP_ENV=${{ inputs.app_env }} \
+            --output=build/fw 2>&1 | tail -80
+
+      - name: Inspect output
+        working-directory: app
+        run: |
+          find build/fw -maxdepth 3 -type d | head -40
+          for f in $(find build/fw -name App -type f); do
+            echo "$f $(stat -f%z $f)"
+          done
+          echo "--- pre constant count in built App ---"
+          python3 - <<'EOF'
+          import glob
+          for f in glob.glob('build/fw/**/App.framework/App', recursive=True):
+              d = open(f,'rb').read()
+              print(f, len(d), 'pre_occurrences', d.count(b'\x70\x72\x65'))
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-framework-muyu
+          path: app/build/fw/**
+          if-no-files-found: error
